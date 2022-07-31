@@ -8,3 +8,5 @@ tables.xlsx Related tables.
 statistics.R Data statistics code used in this article were included.
 
 upstream_pipeline.txt Scripts of sequence data.
+
+rdp_v3_v4_v16_sp_ManualAdjustment201808.fa  The adjusted Ribosomal Database Project (RDP) training set v3v4 with a cutoff of 0.8.
