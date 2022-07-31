@@ -6,3 +6,5 @@ plot_pipeline.Rmd Data processing and drawing codes for all figures drawn in R a
 tables.xlsx Related tables.
 
 statistics.R Data statistics code used in this article were included.
+
+upstream_pipeline.txt Scripts of sequence data.
