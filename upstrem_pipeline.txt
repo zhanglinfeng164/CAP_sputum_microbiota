@@ -1,0 +1,220 @@
+01 cut adapt for CAP data
+1-1 round1
+WORKDIR = demultiplexed directory
+DATADIR
+cutadapt -g file:${WORKDIR}/barcode_1.fa -G file:${WORKDIR}/barcode_2.fa \
+        --pair-adapters \
+        --no-indels \
+        --error-rate 0.2 \
+        --untrimmed-output ${WORKDIR}/untrimed/round1_1.fq \
+        --untrimmed-paired-output ${WORKDIR}/untrimed/round1_2.fq \
+        -o ${WORKDIR}/demux/round1_{name}_1.fq \
+        -p ${WORKDIR}/demux/round1_{name}_2.fq \
+		${DATADIR}_*_1.fq ${DATADIR}_*_2.fq 
+1-2 round2
+cutadapt \
+	-g file:${WORKDIR}/barcode_2.fa \
+    -G file:${WORKDIR}/barcode_1.fa \
+	--pair-adapters \
+    --no-indels \
+    --error-rate 0.2 \
+    --untrimmed-output ${WORKDIR}/untrimed/round2_1.fq \
+    --untrimmed-paired-output ${WORKDIR}/untrimed/round2_2.fq \
+    -o ${WORKDIR}/demux/round2_{name}_1.fq \
+    -p ${WORKDIR}/demux/round2_{name}_2.fq \
+	${WORKDIR}/untrimed/round1_1.fq ${WORKDIR}/untrimed/round1_2.fq
+
+1-3 merge round1 & round2
+DEMUXDIR="${WORKDIR}/demux"
+cd ${DEMUXDIR}
+SAMPLE=`ls|grep "[12].fq$"|grep "^round2" |cut -d "_" -f 2 |uniq`
+for sample in $SAMPLE
+do
+	cat round1_${sample}_1.fq round2_${sample}_1.fq > ${WORKDIR}/lib_${i}/merged/${sample}_1.fq
+	cat round1_${sample}_2.fq round2_${sample}_2.fq > ${WORKDIR}/lib_${i}/merged/${sample}_2.fq
+done
+
+
+01 Deprimer for CAP data
+WORKDIR = deprimer directory
+cd ${DATADIR}
+##get sample nameList
+SAMPLES=`ls|grep "[12].fq$"|cut -d "_" -f 1 |uniq`
+for sample in ${SAMPLES}
+do
+	cutadapt \
+		-g "^CCTAYGGGRBGCASCAG" \
+		-G "^GGACTACNNGGGTATCTAAT" \
+		--pair-adapters \
+		--error-rate 0.12 \
+		--untrimmed-output ${WORKDIR}untrimed/${sample}_1.fq \
+        --untrimmed-paired-output ${WORKDIR}/untrimed/${sample}_2.fq \
+        -o ${WORKDIR}/deprimed/${sample}_1.fq \
+        -p ${WORKDIR}/deprimed/${sample}_2.fq\
+        ${DATADIR}/${sample}_1.fq ${DATADIR}/${sample}_2.fq > ${WORKDIR}/log/${sample}.log
+done
+
+01 Deprimer for Healthy data
+cd ${DATADIR}
+SAMPLES=`ls|grep "[12].fastq$"|cut -d "_" -f 1 |uniq`
+for id in ${SAMPLES}
+	do
+		fastp -i ${id}_1.fastq -I ${id}_2.fastq -o ${WORKDIR}/deprimer_fastp/${id}_1.fq -O ${WORKDIR}/deprimer_fastp/${id}_2.fq -l 100 -x -w 20 --detect_adapter_for_pe --cut_tail --cut_tail_mean_quality 20 > ${WORKDIR}/deprimer_fastp/${id}.qc 2>&1
+	done
+
+02 Quality control
+WORKDIR = qc directory
+SAMPLEDIR= deprimer directory
+FASTQC=fastqc
+MULTIQC=anaconda3/bin/multiqc
+TRIMM=Trimmomatic-0.36/trimmomatic-0.36.jar
+
+##fastqc
+CURDIR=${SAMPLEDIR}/deprimed
+cd ${CURDIR}
+SAMPLE=`ls|grep "[12].fq$"|cut -d "_" -f 1 |uniq`
+for sample in ${SAMPLE}
+do
+	${FASTQC} -o ${WORKDIR}/log -t 6 ${CURDIR}/${sample}_1.fq ${CURDIR}/${sample}_2.fq
+done
+
+##trimmomatic
+CURDIR=${SAMPLEDIR}/deprimed
+cd ${CURDIR}
+SAMPLE=`ls|grep "[12].fq$"|cut -d "_" -f 1 |uniq`
+for sample in ${SAMPLE}
+do
+	java -jar ${TRIMM} PE -threads 6 \
+    ${sample}_1.fq ${sample}_2.fq \
+    ${WORKDIR}/clean_paired_data/${sample}_paired_clean_1.fq \
+    ${WORKDIR}/clean_unpaired_data/${sample}_unpaired_clean_1.fq \
+    ${WORKDIR}/clean_paired_data/${sample}_paired_clean_2.fq \
+    ${WORKDIR}/clean_unpaired_data/${sample}_unpaired_clean_2.fq \
+    LEADING:3 TRAILING:3 SLIDINGWINDOW:5:10 MINLEN:120 2> ${WORKDIR}/log/${sample}.trimmomatic.log
+done
+
+03 Dehost
+CURDIR=${WORKDIR}/clean_paired_data
+cd ${CURDIR}
+SAMPLES=`ls|grep "[12].fq$"|cut -d "_" -f 1 |uniq`
+for sample in ${SAMPLES}
+do
+	bmtagger.sh -b /genome/grch38p12/GRCh38.dna_sm.primary_yh.wbm\
+		-x /genome/grch38p12/GRCh38.dna_sm.primary_yh_univec.srprism\
+        -d /genome/grch38p12/GRCh38.dna_sm.primary_yh_univec.fa\
+        -q1\
+        -1 ${sample}_paired_clean_1.fq \
+        -2 ${sample}_paired_clean_2.fq \
+        -o ${WORKDIR}/dehost/${sample}_bmtagger.out
+done
+
+SAMPLES=`ls|grep "[12].fq$"|cut -d "_" -f 1 |uniq`
+for sample in ${SAMPLES}
+do
+    bmduprm_hash.pl ${WORKDIR}/lib_${i}/dehost/${sample}_bmtagger.out \
+    ${CURDIR}/${sample}_paired_clean_1.fq \
+    ${CURDIR}/${sample}_paired_clean_2.fq
+done
+
+04 Import2qiime
+qiime tools import \
+    --type 'SampleData[PairedEndSequencesWithQuality]' \
+    --input-path manifest_total.txt \
+    --output-path total.qza \
+    --input-format PairedEndFastqManifestPhred33V2
+qiime demux summarize \
+    --i-data total.qza \
+    --o-visualization total_summary.qzv
+
+05 Dada2
+qiime dada2 denoise-paired \
+    --p-trunc-len-f 0 \
+    --p-trunc-len-r 0 \
+    --p-chimera-method 'consensus' \
+    --p-max-ee-f 2 \
+    --p-max-ee-r 3.3 \
+    --p-n-reads-learn 40000000 \
+    --i-demultiplexed-seqs total.qza \
+    --o-representative-sequences rep-seqs-total_bt2_non_chim.qza \
+    --o-table table-total_bt2_non_chim.qza \
+    --o-denoising-stats stats-total_bt2_non_chim.qza \
+    --p-n-threads 20
+
+06 Build tree
+qiime fragment-insertion sepp \
+    --i-representative-sequences rep-seqs-total_bt2_non_chim.qza \
+    --i-reference-database sepp-refs-gg-13-8.qza  \
+    --o-tree insertion-tree.qza \
+    --o-placements insertion-placements.qza
+
+qiime fragment-insertion filter-features \
+  --i-table table-total_bt2_non_chim.qza \
+  --i-tree insertion-tree.qza \
+  --o-filtered-table filtered_table.qza \
+  --o-removed-table removed_table.qza
+
+07 Rarefy
+DEPTH=10000
+qiime feature-table rarefy \
+    --i-table filtered_table.qza \
+    --p-sampling-depth ${DEPTH} \
+    --o-rarefied-table filtered_table_rarefied_${DEPTH}.qza
+echo "rarefied done...###"
+
+qiime tools export \
+    --input-path filtered_table_rarefied_${DEPTH}.qza \
+    --output-path filtered_table_rarefied_${DEPTH}
+
+cd filtered_table_rarefied_${DEPTH}
+biom convert -i feature-table.biom -o ./feature-table.tsv --to-tsv
+
+08 Assign taxonomy
+
+qiime tools export \
+    --input-path rep-seqs-total_bt2_non_chim.qza \
+    --output-path rep_seqs_total_bt2_non_chim
+
+cd rep_seqs_total_bt2_non_chim
+rep_seqs=`ls`
+conf=0.8
+usearch \
+    -sintax rep_seqs_total_bt2_non_chim/${rep_seqs[*]} \
+    -db rdp_v3_v4_v16_sp_ManualAdjustment201808.fa \
+    -strand both \
+    -tabbedout usearch_assign_${conf}.bt2.nonchim.tsv \
+    -sintax_cutoff ${conf}
+
+qiime tools import \
+    --input-path usearch_assign_0.8.bt2.nonchim.formatted.2.tsv \
+    --output-path usearch_taxonomy.qza \
+    --type 'FeatureData[Taxonomy]'
+
+qiime metadata tabulate \
+    --m-input-file usearch_taxonomy.qza \
+    --o-visualization usearch_taxonomy.qzv
+
+qiime taxa filter-table \
+    --i-table filtered_table_rarefied_${DEPTH}.qza \
+    --i-taxonomy usearch_taxonomy.qza \
+    --p-exclude mitochondria,chloroplast \
+    --o-filtered-table table.bt2.nonchim.no-mitochondria-no-chloroplast-${DEPTH}.qza
+
+
+DEPTH=10000
+for i in `seq 7`
+do
+    qiime taxa collapse \
+        --i-table $table.bt2.nonchim.no-mitochondria-no-chloroplast-${DEPTH}.qza \
+        --i-taxonomy usearch_taxonomy.qza \
+        --p-level ${i} \
+        --o-collapsed-table collapse-table-level-${i}-${DEPTH}.qza
+done
+
+
+for i in `seq 7`
+do
+        qiime tools export \
+        --input-path collapse-table-level-${i}-${DEPTH}.qza \
+        --output-path collapse-table-level-${i}-${DEPTH}
+done
+
