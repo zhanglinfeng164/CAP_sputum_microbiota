@@ -3,6 +3,8 @@ Dynamics of respiratory tract microbiota and its association with severity in pa
 
 plot_pipeline.Rmd Data processing and drawing codes for all figures drawn in R are included.  The input file corresponds to the title of the dataframe in the table 
 
+plot_pipeline.pdf Ploting code and corresponding plots.
+
 tables.xlsx Related tables.
 
 statistics.R Data statistics code used in this article were included.
