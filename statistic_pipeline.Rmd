@@ -1,0 +1,734 @@
+---
+title: "stastics_pipeline"
+author: "Zhang Linfeng"
+date: "2022/9/9"
+output:
+  word_document: default
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+
+##library
+```{r}
+#library(tidyverse)
+library(vegan)
+library(reshape2)
+library(dplyr)
+library(ggplot2)
+library(stringr)
+library(phyloseq)
+library(RColorBrewer)
+library(tidyr)
+library(ggsignif)
+library(ggpubr)
+```
+
+
+
+##PERMANOVA
+
+###univariate PERMANOVA
+```{r}
+metadata = read.csv('F:/ZLF/CAP/data/relative_data/metadata-all-220825.csv',row.names = 1)
+df = read.csv("F:/ZLF/CAP/data/relative_data/dfall-220617.csv",row.names=1)
+vals = c('onsetdays_new','sex','age','BMI', 'city',
+         'smoke','basic_LRT_disease','pre_biotic','pre_immunosuppressive',
+         'respiratory.support.invasive','death_case1','severe_case') 
+tot.df = data.frame(R2 = rep(NA,length(vals)),
+                    pval = rep(NA,length(vals)))
+row.names(tot.df) <- vals
+sub.meta = filter(metadata,d == 1)
+for (val in vals){
+  d1.meta = sub.meta[!is.na(sub.meta[,val]),]
+  rownames(d1.meta) <- d1.meta$raw_id
+  d1.df = df[,rownames(d1.meta)] %>% t() %>% as.data.frame()
+  #View(sub.df)
+  OTU = phyloseq::otu_table(d1.df, taxa_are_rows = F)
+  physeq = phyloseq(OTU)
+  jsd=phyloseq::distance(physeq, method = "jsd")
+  
+  res = adonis(as.formula(paste0("jsd~",val)),
+               data = d1.meta, permutations = 999)
+  
+  pval = res$aov.tab$`Pr(>F)`[1]
+  r2 = res$aov.tab$R2[1]
+  tot.df[val,'pval'] = pval
+  tot.df[val,'R2'] = r2
+}
+single_res <- tot.df
+single_res$padj <- p.adjust (single_res$pval, method = 'fdr', n = (length(vals)))
+single_res$group <- 'single'
+single_res <- single_res[order(single_res[,'R2'],decreasing = T),]
+single_res$value <- rownames(single_res)
+single_res
+```
+
+### multivariate PERMANOVA
+```{r}
+metadata = read.csv('F:/ZLF/CAP/data/relative_data/metadata-all-220825.csv',row.names = 1)
+df = read.csv("F:/ZLF/CAP/data/relative_data/dfall-220617.csv",row.names=1)
+vals = c('age', 'city','respiratory.support.invasive','death_case1','severe_case') 
+vals1 = c('onsetdays_new','sex','age','BMI', 'city',
+         'smoke','basic_LRT_disease','pre_biotic','pre_immunosuppressive',
+         'respiratory.support.invasive','death_case1','severe_case') 
+tot.df = data.frame(R2 = rep(NA,length(vals)),
+                    pval = rep(NA,length(vals)))
+row.names(tot.df) <- vals
+sub.meta = filter(metadata,d == 1)
+for (val in vals) {sub.meta <- sub.meta[!is.na(sub.meta[,val]),]}
+rownames(sub.meta) <- sub.meta$raw_id
+sub.df = df[,rownames(sub.meta)] %>% t() %>% as.data.frame()
+nrow(sub.meta)
+OTU = phyloseq::otu_table(sub.df, taxa_are_rows = F)
+physeq = phyloseq(OTU)
+jsd=phyloseq::distance(physeq, method = "jsd")
+res_11 <- adonis2(as.formula(paste0("jsd~",'age+city+respiratory.support.invasive+death_case1+severe_case')),
+                  data = sub.meta,permutations = 999,by = 'margin')
+res_11
+tot.df$R2 = res_11$R2[1:5]
+tot.df$pval = res_11$`Pr(>F)`[1:5]
+multi_res <- tot.df
+multi_res$padj <- p.adjust (multi_res$pval, method = 'fdr', n = (length(vals)))
+multi_res$group <- 'multi'
+multi_res <- multi_res[order(multi_res[,'R2'],decreasing = T),]
+multi_res$value = rownames(multi_res)
+a <- single_res[setdiff(rownames(single_res),rownames(multi_res)),]
+a$R2 = 0
+a$pval = 0
+a$padj = 0
+a$group = 'multi'
+multi_res <- rbind(multi_res,a)
+multi_res
+```
+
+
+
+###pathogen PERMANOVA
+
+###pathogen data import
+```{r}
+#pathogens = c('Mycoplasma.pneumoniae','Klebsiella.pneumoniae','Influenza.A')
+sub.meta <- filter(metadata, dfirst == 'dfirst') %>% filter(type %in% c('Mycoplasma.pneumoniae','Klebsiella.pneumoniae','Influenza.A'))
+sub.df <- df[,rownames(sub.meta)] %>% t() %>% as.data.frame()
+demy_df<-sub.df[rownames(filter(sub.meta,type == 'Mycoplasma.pneumoniae')),]
+dekle_df<-sub.df[rownames(filter(sub.meta,type == 'Klebsiella.pneumoniae')),]
+demy_df[,'g__Mycoplasma'] = 0
+dekle_df[,'f__Enterobacteriaceae'] = 0
+other_df <- sub.df[rownames(filter(sub.meta,type != 'Mycoplasma.pneumoniae' & type != 'Klebsiella.pneumoniae')),]
+df_deself <- rbind(demy_df,dekle_df) %>% rbind(other_df) %>% decostand('total',MARGIN = 1)
+metahea <- filter(metadata,severe_case == 'healthy')
+dfhea <- df[,rownames(metahea)] %>% t() %>% as.data.frame()
+df_deself_hea <- rbind(dfhea,df_deself)
+meta_deself_hea <- metadata[rownames(df_deself_hea),] %>% select(raw_id,city,severe_case,Shannon,Mycoplasma.pneumoniae,Klebsiella.pneumoniae,Influenza.A)
+meta_deself_hea <- left_join(meta_deself_hea,select(sub.meta,raw_id,type))
+meta_deself_hea[is.na(meta_deself_hea[,'type']),'type'] <- 'healthy'
+rownames(meta_deself_hea) <- meta_deself_hea$raw_id
+# Bacteria Virus Mix
+sub.meta <- filter(metadata, dfirst == 'dfirst')
+sub.meta <- sub.meta[sub.meta[,'pathogen_type'] != 'na',]
+sub.df <- df[,rownames(sub.meta)] %>% t() %>% as.data.frame()
+metahea <- filter(metadata,severe_case == 'healthy')
+dfhea <- df[,rownames(metahea)] %>% t() %>% as.data.frame()
+df_pathogen_hea <- rbind(dfhea,sub.df)
+meta_pathogen_hea <- metadata[rownames(df_pathogen_hea),] %>% select(raw_id,city,severe_case,Shannon)
+meta_pathogen_hea <- left_join(meta_pathogen_hea,select(sub.meta,raw_id,pathogen_type))
+meta_pathogen_hea[is.na(meta_pathogen_hea[,'pathogen_type']),'pathogen_type'] <- 'healthy'
+rownames(meta_pathogen_hea) <- meta_pathogen_hea$raw_id
+```
+
+
+###pathogen PERMANOVA
+
+###pathogen data import
+```{r}
+pathogens = c('Mycoplasma.pneumoniae','Klebsiella.pneumoniae','Influenza.A')
+sub.meta <- filter(metadata, dfirst == 'dfirst') %>% filter(type %in% pathogens)
+sub.df <- df[,rownames(sub.meta)] %>% t() %>% as.data.frame()
+demy_df<-sub.df[rownames(filter(sub.meta,type == 'Mycoplasma.pneumoniae')),]
+dekle_df<-sub.df[rownames(filter(sub.meta,type == 'Klebsiella.pneumoniae')),]
+demy_df[,'g__Mycoplasma'] = 0
+dekle_df[,'f__Enterobacteriaceae'] = 0
+other_df <- sub.df[rownames(filter(sub.meta,type != 'Mycoplasma.pneumoniae' & type != 'Klebsiella.pneumoniae')),]
+df_deself <- rbind(demy_df,dekle_df) %>% rbind(other_df) %>% decostand('total',MARGIN = 1)
+metahea <- filter(metadata,severe_case == 'healthy')
+dfhea <- df[,rownames(metahea)] %>% t() %>% as.data.frame()
+df_deself_hea <- rbind(dfhea,df_deself)
+meta_deself_hea <- metadata[rownames(df_deself_hea),] %>% select(raw_id,city,severe_case,Shannon,Mycoplasma.pneumoniae,Klebsiella.pneumoniae,Influenza.A)
+meta_deself_hea <- left_join(meta_deself_hea,select(sub.meta,raw_id,type))
+meta_deself_hea[is.na(meta_deself_hea[,'type']),'type'] <- 'healthy'
+rownames(meta_deself_hea) <- meta_deself_hea$raw_id
+# Bacteria Virus Mix
+sub.meta <- filter(metadata, dfirst == 'dfirst')
+sub.meta <- sub.meta[sub.meta[,'pathogen_type'] != 'na',]
+sub.df <- df[,rownames(sub.meta)] %>% t() %>% as.data.frame()
+metahea <- filter(metadata,severe_case == 'healthy')
+dfhea <- df[,rownames(metahea)] %>% t() %>% as.data.frame()
+df_pathogen_hea <- rbind(dfhea,sub.df)
+meta_pathogen_hea <- metadata[rownames(df_pathogen_hea),] %>% select(raw_id,city,severe_case,Shannon)
+meta_pathogen_hea <- left_join(meta_pathogen_hea,select(sub.meta,raw_id,pathogen_type))
+meta_pathogen_hea[is.na(meta_pathogen_hea[,'pathogen_type']),'pathogen_type'] <- 'healthy'
+rownames(meta_pathogen_hea) <- meta_pathogen_hea$raw_id
+```
+
+
+```{r}
+
+##PH
+d1.meta<-meta_deself_hea
+d1.df<-df_deself_hea
+#d1.meta$respiratory.support_bin
+val = 'type'
+
+d1.meta[d1.meta[,'type']!='healthy','type']='pathogen'
+
+sub.meta = d1.meta[!is.na(d1.meta[,val]),]
+sub.df = d1.df[rownames(sub.meta),]
+#View(sub.df)
+OTU = phyloseq::otu_table(sub.df, taxa_are_rows = F)
+physeq = phyloseq(OTU)
+jsd=phyloseq::distance(physeq, method = "jsd")
+res = adonis(as.formula(paste0("jsd~",'type')),
+             data = sub.meta,permutations = 999)
+print(paste0('PH R2 = ',res$aov.tab$R2[1],' PH p-value = ',res$aov.tab$`Pr(>F)`[1]))
+
+
+##MKIH
+d1.meta<-meta_deself_hea
+d1.df<-df_deself_hea
+#d1.meta$respiratory.support_bin
+val = 'type'
+
+sub.meta = d1.meta[!is.na(d1.meta[,val]),]
+sub.df = d1.df[rownames(sub.meta),]
+#View(sub.df)
+OTU = phyloseq::otu_table(sub.df, taxa_are_rows = F)
+physeq = phyloseq(OTU)
+jsd=phyloseq::distance(physeq, method = "jsd")
+res = adonis(as.formula(paste0("jsd~",'type')),
+              data = sub.meta,permutations = 999)
+
+print(paste0('MKIH R2 = ',res$aov.tab$R2[1],' MKIH p-value = ',res$aov.tab$`Pr(>F)`[1]))
+
+
+
+##MKI
+d1.meta<-meta_deself_hea %>% filter(type != 'healthy')
+d1.df<-df_deself_hea
+#d1.meta$respiratory.support_bin
+val = 'type'
+
+sub.meta = d1.meta[!is.na(d1.meta[,val]),]
+sub.df = d1.df[rownames(sub.meta),]
+#View(sub.df)
+OTU = phyloseq::otu_table(sub.df, taxa_are_rows = F)
+physeq = phyloseq(OTU)
+jsd=phyloseq::distance(physeq, method = "jsd")
+res = adonis(as.formula(paste0("jsd~",'type')),
+             data = sub.meta,permutations = 999)
+
+print(paste0('MKI R2 = ',res$aov.tab$R2[1],' MKI p-value = ',res$aov.tab$`Pr(>F)`[1]))
+
+
+##MH
+d1.meta<-meta_deself_hea %>% filter(type == 'healthy' | type == 'Mycoplasma.pneumoniae')
+d1.df<-df_deself_hea
+#d1.meta$respiratory.support_bin
+val = 'type'
+
+sub.meta = d1.meta[!is.na(d1.meta[,val]),]
+sub.df = d1.df[rownames(sub.meta),]
+#View(sub.df)
+OTU = phyloseq::otu_table(sub.df, taxa_are_rows = F)
+physeq = phyloseq(OTU)
+jsd=phyloseq::distance(physeq, method = "jsd")
+res = adonis(as.formula(paste0("jsd~",'type')),
+             data = sub.meta,permutations = 999)
+
+print(paste0('MH R2 = ',res$aov.tab$R2[1],' MH p-value = ',res$aov.tab$`Pr(>F)`[1]))
+
+
+
+##KH
+d1.meta<-meta_deself_hea %>% filter(type == 'healthy' | type == 'Klebsiella.pneumoniae')
+d1.df<-df_deself_hea
+#d1.meta$respiratory.support_bin
+val = 'type'
+
+sub.meta = d1.meta[!is.na(d1.meta[,val]),]
+sub.df = d1.df[rownames(sub.meta),]
+#View(sub.df)
+OTU = phyloseq::otu_table(sub.df, taxa_are_rows = F)
+physeq = phyloseq(OTU)
+jsd=phyloseq::distance(physeq, method = "jsd")
+res = adonis(as.formula(paste0("jsd~",'type')),
+             data = sub.meta,permutations = 999)
+
+print(paste0('KH R2 = ',res$aov.tab$R2[1],' KH p-value = ',res$aov.tab$`Pr(>F)`[1]))
+
+
+##IH
+d1.meta<-meta_deself_hea %>% filter(type == 'healthy' | type == 'Influenza.A')
+d1.df<-df_deself_hea
+#d1.meta$respiratory.support_bin
+val = 'type'
+
+sub.meta = d1.meta[!is.na(d1.meta[,val]),]
+sub.df = d1.df[rownames(sub.meta),]
+#View(sub.df)
+OTU = phyloseq::otu_table(sub.df, taxa_are_rows = F)
+physeq = phyloseq(OTU)
+jsd=phyloseq::distance(physeq, method = "jsd")
+res = adonis(as.formula(paste0("jsd~",'type')),
+             data = sub.meta,permutations = 999)
+
+print(paste0('IH R2 = ',res$aov.tab$R2[1],' IH p-value = ',res$aov.tab$`Pr(>F)`[1]))
+
+
+
+##MK
+#pathogens
+#"Mycoplasma.pneumoniae" "Klebsiella.pneumoniae" "Influenza.A"  
+d1.meta<-meta_deself_hea %>% filter(type == 'Mycoplasma.pneumoniae' | type == 'Klebsiella.pneumoniae')
+d1.df<-df_deself_hea
+#d1.meta$respiratory.support_bin
+val = 'type'
+
+sub.meta = d1.meta[!is.na(d1.meta[,val]),]
+sub.df = d1.df[rownames(sub.meta),]
+#View(sub.df)
+OTU = phyloseq::otu_table(sub.df, taxa_are_rows = F)
+physeq = phyloseq(OTU)
+jsd=phyloseq::distance(physeq, method = "jsd")
+res = adonis(as.formula(paste0("jsd~",'type')),
+             data = sub.meta,permutations = 999)
+
+print(paste0('MK R2 = ',res$aov.tab$R2[1],' MK p-value = ',res$aov.tab$`Pr(>F)`[1]))
+
+
+##MI
+#pathogens
+#"Mycoplasma.pneumoniae" "Klebsiella.pneumoniae" "Influenza.A"  
+d1.meta<-meta_deself_hea %>% filter(type == 'Mycoplasma.pneumoniae' | type == 'Influenza.A')
+d1.df<-df_deself_hea
+#d1.meta$respiratory.support_bin
+val = 'type'
+
+sub.meta = d1.meta[!is.na(d1.meta[,val]),]
+sub.df = d1.df[rownames(sub.meta),]
+#View(sub.df)
+OTU = phyloseq::otu_table(sub.df, taxa_are_rows = F)
+physeq = phyloseq(OTU)
+jsd=phyloseq::distance(physeq, method = "jsd")
+res = adonis(as.formula(paste0("jsd~",'type')),
+             data = sub.meta,permutations = 999)
+
+print(paste0('MI R2 = ',res$aov.tab$R2[1],' MI p-value = ',res$aov.tab$`Pr(>F)`[1]))
+
+##KI
+#pathogens
+#"Mycoplasma.pneumoniae" "Klebsiella.pneumoniae" "Influenza.A"  
+d1.meta<-meta_deself_hea %>% filter(type == 'Klebsiella.pneumoniae' | type == 'Influenza.A')
+d1.df<-df_deself_hea
+#d1.meta$respiratory.support_bin
+val = 'type'
+
+sub.meta = d1.meta[!is.na(d1.meta[,val]),]
+sub.df = d1.df[rownames(sub.meta),]
+#View(sub.df)
+OTU = phyloseq::otu_table(sub.df, taxa_are_rows = F)
+physeq = phyloseq(OTU)
+jsd=phyloseq::distance(physeq, method = "jsd")
+res = adonis(as.formula(paste0("jsd~",'type')),
+             data = sub.meta,permutations = 999)
+
+print(paste0('KI R2 = ',res$aov.tab$R2[1],' KI p-value = ',res$aov.tab$`Pr(>F)`[1]))
+
+
+##BVMH
+d1.meta<-meta_pathogen_hea
+d1.df<-df_pathogen_hea
+#d1.meta$respiratory.support_bin
+val = 'pathogen_type'
+
+sub.meta = d1.meta[!is.na(d1.meta[,val]),]
+sub.df = d1.df[rownames(sub.meta),]
+#View(sub.df)
+OTU = phyloseq::otu_table(sub.df, taxa_are_rows = F)
+physeq = phyloseq(OTU)
+jsd=phyloseq::distance(physeq, method = "jsd")
+res = adonis(as.formula(paste0("jsd~",'pathogen_type')),
+             data = sub.meta,permutations = 999)
+
+print(paste0('BVMH R2 = ',res$aov.tab$R2[1],' BVMH p-value = ',res$aov.tab$`Pr(>F)`[1]))
+
+##BVM
+d1.meta<-meta_pathogen_hea %>% filter(pathogen_type != 'healthy')
+d1.df<-df_pathogen_hea
+#d1.meta$respiratory.support_bin
+val = 'pathogen_type'
+
+sub.meta = d1.meta[!is.na(d1.meta[,val]),]
+sub.df = d1.df[rownames(sub.meta),]
+#View(sub.df)
+OTU = phyloseq::otu_table(sub.df, taxa_are_rows = F)
+physeq = phyloseq(OTU)
+jsd=phyloseq::distance(physeq, method = "jsd")
+res = adonis(as.formula(paste0("jsd~",'pathogen_type')),
+             data = sub.meta,permutations = 999)
+
+print(paste0('BVM R2 = ',res$aov.tab$R2[1],' BVM p-value = ',res$aov.tab$`Pr(>F)`[1]))
+
+
+##BH
+d1.meta<-meta_pathogen_hea %>% filter(pathogen_type == 'healthy' | pathogen_type == 'bacteria')
+d1.df<-df_pathogen_hea
+#d1.meta$respiratory.support_bin
+val = 'pathogen_type'
+
+sub.meta = d1.meta[!is.na(d1.meta[,val]),]
+sub.df = d1.df[rownames(sub.meta),]
+#View(sub.df)
+OTU = phyloseq::otu_table(sub.df, taxa_are_rows = F)
+physeq = phyloseq(OTU)
+jsd=phyloseq::distance(physeq, method = "jsd")
+res = adonis(as.formula(paste0("jsd~",'pathogen_type')),
+             data = sub.meta,permutations = 999)
+
+print(paste0('BH R2 = ',res$aov.tab$R2[1],' BH p-value = ',res$aov.tab$`Pr(>F)`[1]))
+
+
+##VH
+d1.meta<-meta_pathogen_hea %>% filter(pathogen_type == 'healthy' | pathogen_type == 'virus')
+d1.df<-df_pathogen_hea
+#d1.meta$respiratory.support_bin
+val = 'pathogen_type'
+
+sub.meta = d1.meta[!is.na(d1.meta[,val]),]
+sub.df = d1.df[rownames(sub.meta),]
+#View(sub.df)
+OTU = phyloseq::otu_table(sub.df, taxa_are_rows = F)
+physeq = phyloseq(OTU)
+jsd=phyloseq::distance(physeq, method = "jsd")
+res = adonis(as.formula(paste0("jsd~",'pathogen_type')),
+             data = sub.meta,permutations = 999)
+
+print(paste0('VH R2 = ',res$aov.tab$R2[1],' VH p-value = ',res$aov.tab$`Pr(>F)`[1]))
+
+
+
+##MH
+d1.meta<-meta_pathogen_hea %>% filter(pathogen_type == 'healthy' | pathogen_type == 'mix')
+d1.df<-df_pathogen_hea
+#d1.meta$respiratory.support_bin
+val = 'pathogen_type'
+
+sub.meta = d1.meta[!is.na(d1.meta[,val]),]
+sub.df = d1.df[rownames(sub.meta),]
+#View(sub.df)
+OTU = phyloseq::otu_table(sub.df, taxa_are_rows = F)
+physeq = phyloseq(OTU)
+jsd=phyloseq::distance(physeq, method = "jsd")
+res = adonis(as.formula(paste0("jsd~",'pathogen_type')),
+             data = sub.meta,permutations = 999)
+
+print(paste0('MH R2 = ',res$aov.tab$R2[1],' MH p-value = ',res$aov.tab$`Pr(>F)`[1]))
+
+
+
+##BV
+d1.meta<-meta_pathogen_hea %>% filter(pathogen_type == 'bacteria' | pathogen_type == 'virus')
+d1.df<-df_pathogen_hea
+#d1.meta$respiratory.support_bin
+val = 'pathogen_type'
+
+sub.meta = d1.meta[!is.na(d1.meta[,val]),]
+sub.df = d1.df[rownames(sub.meta),]
+#View(sub.df)
+OTU = phyloseq::otu_table(sub.df, taxa_are_rows = F)
+physeq = phyloseq(OTU)
+jsd=phyloseq::distance(physeq, method = "jsd")
+res = adonis(as.formula(paste0("jsd~",'pathogen_type')),
+             data = sub.meta,permutations = 999)
+
+print(paste0('BV R2 = ',res$aov.tab$R2[1],' BV p-value = ',res$aov.tab$`Pr(>F)`[1]))
+
+
+##BM
+d1.meta<-meta_pathogen_hea %>% filter(pathogen_type == 'bacteria' | pathogen_type == 'mix')
+d1.df<-df_pathogen_hea
+#d1.meta$respiratory.support_bin
+val = 'pathogen_type'
+
+sub.meta = d1.meta[!is.na(d1.meta[,val]),]
+sub.df = d1.df[rownames(sub.meta),]
+#View(sub.df)
+OTU = phyloseq::otu_table(sub.df, taxa_are_rows = F)
+physeq = phyloseq(OTU)
+jsd=phyloseq::distance(physeq, method = "jsd")
+res = adonis(as.formula(paste0("jsd~",'pathogen_type')),
+             data = sub.meta,permutations = 999)
+
+print(paste0('BM R2 = ',res$aov.tab$R2[1],' BM p-value = ',res$aov.tab$`Pr(>F)`[1]))
+
+
+
+##VM
+d1.meta<-meta_pathogen_hea %>% filter(pathogen_type == 'virus' | pathogen_type == 'mix')
+d1.df<-df_pathogen_hea
+#d1.meta$respiratory.support_bin
+val = 'pathogen_type'
+
+sub.meta = d1.meta[!is.na(d1.meta[,val]),]
+sub.df = d1.df[rownames(sub.meta),]
+#View(sub.df)
+OTU = phyloseq::otu_table(sub.df, taxa_are_rows = F)
+physeq = phyloseq(OTU)
+jsd=phyloseq::distance(physeq, method = "jsd")
+res = adonis(as.formula(paste0("jsd~",'pathogen_type')),
+             data = sub.meta,permutations = 999)
+
+print(paste0('VM R2 = ',res$aov.tab$R2[1],' VM p-value = ',res$aov.tab$`Pr(>F)`[1]))
+
+
+
+##PH
+
+d1.meta<-meta_pathogen_hea 
+d1.df<-df_pathogen_hea
+#d1.meta$respiratory.support_bin
+val = 'pathogen_type'
+
+sub.meta = d1.meta[!is.na(d1.meta[,val]),]
+
+sub.meta[sub.meta[,'pathogen_type'] != 'healthy',] = 'pathogen'
+
+sub.df = d1.df[rownames(sub.meta),]
+
+#View(sub.df)
+OTU = phyloseq::otu_table(sub.df, taxa_are_rows = F)
+physeq = phyloseq(OTU)
+jsd=phyloseq::distance(physeq, method = "jsd")
+res = adonis(as.formula(paste0("jsd~",'pathogen_type')),
+             data = sub.meta,permutations = 999)
+
+print(paste0('PH R2 = ',res$aov.tab$R2[1],' PH p-value = ',res$aov.tab$`Pr(>F)`[1]))
+
+```
+
+
+
+##cluster
+```{r}
+## PAM
+pam1 <- function(x,k) list(cluster = pam(x,k, cluster.only=TRUE))
+
+max_num = 20
+
+nums=c(2:{max_num})
+cord=df %>% t() %>% as.data.frame()
+
+for(num in nums){{
+  pam = pam1(cord,k=num)
+  ofile=c("cord_pam_",num,".csv")
+  write.csv(pam ,ofile)    
+}}
+```
+
+##test in paper
+###mechanical ventilation related CS in severity
+```{r}
+library(openxlsx)
+transmeta = read.xlsx('F:/ZLF/CAP/data/relative_data/trans_meta1.xlsx',1,rowNames = T)
+transmeta<-filter(transmeta,severity == 'yes')
+transmeta_mv<-filter(transmeta,respiratory_support == '1' | respiratory_support == '2,1')
+transmeta_oth<-filter(transmeta,respiratory_support != '1' & respiratory_support != '2,1')
+
+
+trans<-data.frame(matrix(nrow = 2,ncol = 2))
+trans<-data.frame(matrix(nrow = 2,ncol = 2))
+rownames(trans)<-c('mv','others')
+colnames(trans)<-c('self','to others')
+
+trans[1,1]<-nrow(filter(transmeta_mv, d1 ==d5))
+trans[1,2]<-nrow(filter(transmeta_mv, d1 !=d5))
+trans[2,1]<-nrow(filter(transmeta_oth, d1 ==d5))
+trans[2,2]<-nrow(filter(transmeta_oth, d1 !=d5))
+fisher.test(trans)
+
+for (i in 1:10) {
+  trans<-data.frame(matrix(nrow = 2,ncol = 2))
+  trans<-data.frame(matrix(nrow = 2,ncol = 2))
+  colnames(trans)<-c('cs','csothers')
+  rownames(trans)<-c('mv','non-mv')
+  
+  trans[1,1]<-nrow(filter(transmeta_mv, d1 != i & d5 == i))
+  trans[1,2]<-nrow(filter(transmeta_mv, d1 !=i & d5 != i & d5 != d1))
+  trans[2,1]<-nrow(filter(transmeta_oth, d1 != i & d5 == i))
+  trans[2,2]<-nrow(filter(transmeta_oth, d1 !=i & d5 != i & d5 != d1))
+  print(paste('cluter',i,'pvalue = ',fisher.test(trans)$p))
+}
+
+```
+
+###intubated patients were transmitted to CS5 in Day 5 
+```{r}
+metadata = read.csv('F:/ZLF/CAP/data/relative_data/metadata-all-220617.csv',row.names = 1)
+trans<-data.frame(matrix(nrow = 2,ncol = 2))
+trans<-data.frame(matrix(nrow = 2,ncol = 2))
+rownames(trans)<-c('intubate','unintubate')
+colnames(trans)<-c('tocs5','tocsothers')
+
+transmeta_mv<-filter(transmeta,respiratory_support == '1' | respiratory_support == '2,1')
+transmeta_oth<-filter(transmeta,respiratory_support != '1' & respiratory_support != '2,1')
+trans[1,1]<-filter(transmeta,d5 == 5) %>% 
+  filter(respiratory_support == '1' | respiratory_support == '2,1') %>% nrow()
+trans[2,1]<-filter(transmeta,d5 == 5) %>% 
+  filter(respiratory_support != '1' & respiratory_support != '2,1') %>% 
+   nrow()
+trans[1,2]<-filter(transmeta,d5 != 5) %>% 
+  filter(respiratory_support == '1' | respiratory_support == '2,1') %>% nrow()
+trans[2,2]<-filter(transmeta,d5 != 5) %>% 
+  filter(respiratory_support != '1' & respiratory_support != '2,1') %>% 
+  nrow()
+fisher.test(trans)
+```
+
+###intubated patients were transmitted to CS5 in Day 5 
+```{r}
+
+metadata = read.csv('F:/ZLF/CAP/data/relative_data/metadata-all-220617.csv',row.names = 1)
+trans<-data.frame(matrix(nrow = 2,ncol = 2))
+trans<-data.frame(matrix(nrow = 2,ncol = 2))
+rownames(trans)<-c('intubate','unintubate')
+colnames(trans)<-c('tocs5','tocsothers')
+
+transmeta_mv<-filter(transmeta,respiratory_support == '1' | respiratory_support == '2,1')
+transmeta_oth<-filter(transmeta,respiratory_support != '1' & respiratory_support != '2,1')
+trans[1,1]<-filter(transmeta,d5 == 5) %>% 
+  filter(respiratory_support == '1' | respiratory_support == '2,1') %>% nrow()
+trans[2,1]<-filter(transmeta,d5 == 5) %>% 
+  filter(respiratory_support != '1' & respiratory_support != '2,1') %>% 
+   nrow()
+trans[1,2]<-filter(transmeta,d5 != 5) %>% 
+  filter(respiratory_support == '1' | respiratory_support == '2,1') %>% nrow()
+trans[2,2]<-filter(transmeta,d5 != 5) %>% 
+  filter(respiratory_support != '1' & respiratory_support != '2,1') %>% 
+  nrow()
+fisher.test(trans)
+
+```
+
+###severity cs234 cs6
+```{r}
+metadata = read.csv('F:/ZLF/CAP/data/relative_data/metadata-all-220617.csv',row.names = 1)
+trans<-data.frame(matrix(nrow = 2,ncol = 2))
+trans<-data.frame(matrix(nrow = 2,ncol = 2))
+rownames(trans)<-c('severe','non-severe')
+colnames(trans)<-c('cs234','cs6')
+
+trans[1,1]<-filter(metadata,pam_10_cluster == 2 | pam_10_cluster ==3 | pam_10_cluster == 4) %>% 
+  filter(severe_case == 'yes') %>% nrow()
+trans[2,1]<-filter(metadata,pam_10_cluster == 2 | pam_10_cluster ==3 | pam_10_cluster == 4) %>% 
+  filter(severe_case == 'no') %>% nrow()
+trans[1,2]<-filter(metadata,pam_10_cluster == 6) %>% 
+  filter(severe_case == 'yes') %>% nrow()
+trans[2,2]<-filter(metadata,pam_10_cluster == 6) %>% 
+  filter(severe_case == 'no') %>% nrow()
+fisher.test(trans)
+```
+
+###severity cs234 cs15789
+```{r}
+metadata = read.csv('F:/ZLF/CAP/data/relative_data/metadata-all-220617.csv',row.names = 1)
+trans<-data.frame(matrix(nrow = 2,ncol = 2))
+trans<-data.frame(matrix(nrow = 2,ncol = 2))
+rownames(trans)<-c('severe','non-severe')
+colnames(trans)<-c('cs234','cs15789')
+
+trans[1,1]<-filter(metadata,pam_10_cluster == 2 | pam_10_cluster ==3 | pam_10_cluster == 4) %>% 
+  filter(severe_case == 'yes') %>% nrow()
+trans[2,1]<-filter(metadata,pam_10_cluster == 2 | pam_10_cluster ==3 | pam_10_cluster == 4) %>% 
+  filter(severe_case == 'no') %>% nrow()
+trans[1,2]<-filter(metadata,pam_10_cluster == 1 | pam_10_cluster ==5 | pam_10_cluster == 7 | pam_10_cluster == 8 | pam_10_cluster == 9) %>% 
+  filter(severe_case == 'yes') %>% nrow()
+trans[2,2]<-filter(metadata,pam_10_cluster == 1 | pam_10_cluster ==5 | pam_10_cluster == 7 | pam_10_cluster == 8 | pam_10_cluster == 9) %>% 
+  filter(severe_case == 'no') %>% nrow()
+fisher.test(trans)
+```
+
+
+
+###CS day1 to day5
+```{r}
+  unique(transmeta$respiratory_support)
+pva<-data.frame(cs = 1,trans_to_cs = 1,pvalue = NA)
+transmeta = read.xlsx('F:/ZLF/CAP/data/relative_data/trans_meta1.xlsx',1,rowNames = T)
+transmeta = read.csv('F:/ZLF/CAP/data/relative_data/trans_meta1.csv',row.names = 1)
+transmeta<-filter(transmeta,severity == 'yes')
+#transmeta<-filter(transmeta,respiratory_support == '1' | respiratory_support == '2,1')
+transmeta<-transmeta[!is.na(transmeta[,'d1']),]
+transmeta<-transmeta[!is.na(transmeta[,'d5']),]
+transmeta<-filter(transmeta,severity == 'yes'|severity == 'no')
+j = 8
+i = 5
+
+#View(transmeta)
+
+#transmeta$severity
+
+#transmeta$severity
+for (j in 1:10) {
+  for (i in 1:10) {
+    #assign(paste0('trans',j,i))
+    trans<-data.frame(matrix(nrow = 2,ncol = 2))
+    trans<-data.frame(matrix(nrow = 2,ncol = 2))
+    rownames(trans)<-c('cs','csothers')
+    colnames(trans)<-c('transtocs','transtoothers')
+    
+    trans[1,1]<-nrow(filter(transmeta[!is.na(transmeta[,'d1']),],d1 == j & d5 ==i))
+    trans[2,1]<-nrow(filter(transmeta[!is.na(transmeta[,'d1']),],d1 != j & d1 != i & d5 == i))
+    trans[1,2]<-nrow(filter(transmeta[!is.na(transmeta[,'d1']),],d1 == j & d5 != i &d5 != j))
+    mid = 0
+    #for (k in setdiff(setdiff(1:10,j),i)) {for(h in setdiff(setdiff(1:10,i),k)){mid = mid+nrow(filter(transmeta[!is.na(transmeta[,'d1']),],d1 == k & d5 ==h))}}
+    for (k in setdiff(1:10,j)) {for(h in setdiff(setdiff(1:10,i),k)){mid = mid+nrow(filter(transmeta[!is.na(transmeta[,'d1']),],d1 == k & d5 ==h))}}
+    
+    trans[2,2] = mid
+    #trans[2,2]<-nrow(filter(transmeta[!is.na(transmeta[,'d1']),],d1 != j & d5 != i))
+    pva[10*(as.numeric(j)-1)+as.numeric(i),'trans_to_cs'] = as.numeric(i)
+    pva[10*(as.numeric(j)-1)+as.numeric(i),'cs'] = as.numeric(j)
+    pva[10*(as.numeric(j)-1)+as.numeric(i),'pvalue'] = fisher.test(trans)$p
+    #print(paste('cluter',j,'trans to',i,'pvalue = ',fisher.test(trans)$p))
+  }                
+}
+
+pva$qvalue<-p.adjust(pva$pvalue,method = 'bh')
+pva_sig <- filter(pva,pvalue <= 0.05) %>% filter(cs != trans_to_cs)
+
+j = 8
+i = 5
+trans<-data.frame(matrix(nrow = 2,ncol = 2))
+trans<-data.frame(matrix(nrow = 2,ncol = 2))
+rownames(trans)<-c('cs','csothers')
+colnames(trans)<-c('transtocs','transtoothers')
+trans[1,1]<-nrow(filter(transmeta[!is.na(transmeta[,'d1']),],d1 == j & d5 ==i))
+trans[2,1]<-nrow(filter(transmeta[!is.na(transmeta[,'d1']),],d1 != j & d1 != i & d5 == i))
+trans[1,2]<-nrow(filter(transmeta[!is.na(transmeta[,'d1']),],d1 == j & d5 != i &d5 != j))
+mid = 0
+for (k in setdiff(1:10,j)) {for(h in setdiff(setdiff(1:10,i),k)){mid = mid+nrow(filter(transmeta[!is.na(transmeta[,'d1']),],d1 == k & d5 ==h))}}
+trans[2,2] = mid
+
+
+rownames(trans)[1] <- c('cs8')
+colnames(trans)[1] <- 'transtocs5'
+
+trans
+
+fisher.test(trans)
+
+
+```
+
+
+
