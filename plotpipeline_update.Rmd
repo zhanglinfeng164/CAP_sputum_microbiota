@@ -1,5 +1,5 @@
 ---
-title: "plot_pipeline_update"
+title: "plot_pipeline"
 author: "Zhang Linfeng"
 date: "2022/9/20"
 output:
@@ -62,11 +62,10 @@ disTance = function(sub.meta,sub.df,dis_method,bind_info1,bind_info2){
 }
 ```
 
-##Data input
+##Data input(in tables)
 ```{r}
-df = read.csv("F:/ZLF/CAP/data/relative_data/dfall-220617.csv",
-              row.names=1)
-metadata = read.csv('F:/ZLF/CAP/data/relative_data/metadata-all-220617.csv',row.names = 1)
+df
+metadata
 ```
 
 ##patients distribution
@@ -81,7 +80,7 @@ f1a_plot = list(    day1 = day1$V1,
                     day7 = day7$V1,  
                     day9 = day9$V1
 )
-f1a <- upset(fromList(f1a_plot),
+upset(fromList(f1a_plot),
              nsets = 8,
              order.by = "freq",
              sets = c('day1','day3','day5','day7','day9'),
@@ -93,14 +92,14 @@ f1a <- upset(fromList(f1a_plot),
              mb.ratio = c(0.7,0.3),
              text.scale = c(1.5, 1.5, 1.5, 1.5, 1.5, 1.5),  
 )     
-f1a
+
 ```
 
 
 
 ##microbiota composition
 ```{r}
-# Figure 1B ---------------------------------------------------------------
+# composition heatmap
 library(pheatmap)
 metadata_cap <- filter(metadata,subject != 'healthy' & subject != 'nc' & subject != 'NCPCR')
 df_cap <- df[,rownames(metadata_cap)]
@@ -121,7 +120,7 @@ sub.df['others',]<-1-colSums(sub.df)
 ##ordered by Streptococcus
 sub.df<-sub.df[,order(sub.df['g__Streptococcus',],decreasing = TRUE)]
 annotation = metadata[colnames(sub.df),]%>%select(severe_case) %>% arrange(severe_case)
-##df内部排序
+##df_order
 for (ci in c('yes','no','healthy')) {
   mid <- filter(sub.meta,severe_case == ci)
   assign(paste0(ci),select(sub.df,rownames(mid)))
@@ -129,11 +128,11 @@ for (ci in c('yes','no','healthy')) {
 }
 sub.df1<-cbind(yes,no,healthy)
 sub.df1<-sub.df1[rownames(sub.df1)[1:nrow(sub.df1)-1],]
-f1b_plot <- sub.df1
+
 sub.meta$severe_case <- factor(sub.meta$severe_case,levels = c('yes','no','healthy'))
 ann_colors = list(severe_case = c(yes = "#E69F00", no = "#56B4E9",healthy = 'forestgreen'))
 bk = c(seq(0,1,by=0.001))
-f1b<-pheatmap(f1b_plot,
+pheatmap(sub.df1,
               color = colorRampPalette(c( "white", "firebrick3"))(length(colnames(sub.df1))),
               cellwidth = 0.2, cellheight = 9,
               fontsize=6, 
@@ -148,7 +147,7 @@ f1b<-pheatmap(f1b_plot,
               annotation_col = annotation,
               annotation_colors = ann_colors
 )
-f1b
+
 dff1a<-data.frame(median = rep(NA,15))
 rownames(dff1a)<-rownames(sub.df1)
 for (i in 1:nrow(sub.df1)) {
@@ -164,9 +163,9 @@ for (i in 1:nrow(sub.df1)) {
 }
 dff1a$foldchange <- dff1a$heamean/dff1a$capmean
 dff1a$foldchangech <- dff1a$capmean/dff1a$heamean
-f1b_plot_2 <- dff1a
+plot1 <- dff1a
 bk = c(seq(0,2.7,by=0.0027))
-f1b_2<-pheatmap(select(f1b_plot_2 ,foldchange),
+pheatmap(select(plot1 ,foldchange),
                 color = c(colorRampPalette(colors = c("steelblue4","white"))(floor(length(bk)*(1/2.7))),colorRampPalette(colors = c( "white","darkred"))(ceiling(length(bk)*(1.7/2.7)))),
                 cellwidth = 18, cellheight = 18,
                 fontsize=2, 
@@ -183,7 +182,7 @@ f1b_2<-pheatmap(select(f1b_plot_2 ,foldchange),
                 annotation_colors = ann_colors
                
 )
-f1b_2
+
 ```
 
 
@@ -192,7 +191,7 @@ f1b_2
 ```{r}
 sub.meta <- metadata %>% filter(subject != 'nc' & subject != 'NCPCR')
 sub.df <- df[,rownames(sub.meta)] %>% t() %>% as.data.frame()
-f1d_plot <-disTance(sub.meta,sub.df,'jsd','severe_case','pam_10_cluster') %>% 
+plot1 <-disTance(sub.meta,sub.df,'jsd','severe_case','pam_10_cluster') %>% 
   filter(severe_case == 'healthy')
 colnames(f1d_plot)[4] <- 'severity'
 colnames(f1d_plot)[3]<-'distance_to_healthy'
@@ -200,15 +199,15 @@ f1d_plot$pam_10_cluster <- f1d_plot$pam_10_cluster %>% as.character()%>% factor(
 cluster_severerate = severityOfCluster(metadata,sev = 'severe')
 f1d_plot <- left_join(f1d_plot,cluster_severerate,by = "pam_10_cluster")
 f1d_plot$severe_proportion <- as.numeric(f1d_plot$severe_proportion)
-f1d<-
-  ggplot(f1d_plot,aes(x=pam_10_cluster,y=distance_to_healthy))+
+
+  ggplot(plot1,aes(x=pam_10_cluster,y=distance_to_healthy))+
   geom_violin(aes(alpha = severe_proportion),fill = 'forestgreen',width = 1.5)+
   geom_boxplot(aes(alpha = severe_proportion),fill = 'forestgreen',width = 0.1,position = position_identity(),outlier.size = 0.1)+
   scale_alpha_continuous(limits = c(0,0.8))+
   geom_signif(comparisons = list(c("1", "11"),c('2','11'),c('3','11'),c("4", "11"),c('5','11'),c('6','11'),c("7", "11"),c('8','11'),c('9','11'),c('10','11')),map_signif_level=T,test = "wilcox.test")+ 
   labs(title="distance to healthy",size=11) + 
   theme_bw()
-f1d
+
 ```
 
 ##shannon of each cluster
@@ -216,18 +215,16 @@ f1d
 sub.meta <- metadata %>% filter(subject != 'nc' & subject != 'NCPCR') %>% select(raw_id,pam_10_cluster,Shannon)
 cluster_severerate = severityOfCluster(metadata,sev = 'severe')
 sub.meta$pam_10_cluster <- sub.meta$pam_10_cluster %>% as.character()
-f1e_plot <- left_join(sub.meta,cluster_severerate)
-f1e_plot$severe_proportion = as.numeric(f1e_plot$severe_proportion)
-f1e_plot$pam_10_cluster <- factor(f1e_plot$pam_10_cluster,levels = 1:11 %>% as.character())
-f1e<-
-  ggplot(f1e_plot,aes(x=pam_10_cluster,y=Shannon,alpha = severe_proportion))+
+plot1 <- left_join(sub.meta,cluster_severerate)
+plot1$severe_proportion = as.numeric(f1e_plot$severe_proportion)
+plot1$pam_10_cluster <- factor(f1e_plot$pam_10_cluster,levels = 1:11 %>% as.character())
+  ggplot(plot1,aes(x=pam_10_cluster,y=Shannon,alpha = severe_proportion))+
   geom_violin(aes(alpha = severe_proportion),fill = 'forestgreen',width = 1)+
   geom_boxplot(aes(alpha = severe_proportion),fill = 'forestgreen',width = 0.1,position = position_identity(),outlier.size = 0.1)+
   scale_alpha_continuous(limits = c(0,0.8))+
   geom_signif(comparisons = list(c("1", "11"),c('2','11'),c('3','11'),c("4", "11"),c('5','11'),c('6','11'),c("7", "11"),c('8','11'),c('9','11'),c('10','11')),map_signif_level=T,test = "wilcox.test")+ 
   labs(title="shannnon of each cluster",size=11) + 
   theme_bw()
-f1e
 ```
 
 ##distance to NC
@@ -240,13 +237,13 @@ dis_to_nc[dis_to_nc[,'subject.y'] %in% c('nc','NCPCR'),'pam_10_cluster'] = 'NC'
 colnames(dis_to_nc)[3]<-'distance_to_nc'
 #colnames(dis_to_nc)[5]<-'cluster'
 dis_to_nc$pam_10_cluster<-factor(dis_to_nc$pam_10_cluster,levels = c(1,2,3,4,5,6,7,8,9,10,'NC') %>% as.character())
-f1f_plot <- dis_to_nc[!is.na(dis_to_nc[,'pam_10_cluster']),]
+plot1 <- dis_to_nc[!is.na(dis_to_nc[,'pam_10_cluster']),]
 #pal <- c(rev(brewer.pal(11,'Paired'),rev(brewer.pal(7,8,'Paired'))))
 pal <- c("#1F78B4","#A6CEE3","#FF7F00","#FDBF6F","#33A02C","#B2DF8A","#E31A1C","#FB9A99","#6A3D9A","#CAB2D6","#FFFF99")
 pal <- c("#1F78B4","#A6CEE3","#FF7F00","#FDBF6F","#33A02C","#B2DF8A","#E31A1C","#FB9A99","#6A3D9A","#CAB2D6","#FFFF99")
 #dis_to_nc[is.na(dis_to_nc[,'cluster']),'Var2'] %>% unique()
-f1f<-
-  ggplot(f1f_plot,aes(pam_10_cluster,y=distance_to_nc))+
+
+  ggplot(plot1,aes(pam_10_cluster,y=distance_to_nc))+
   geom_violin(aes(fill = pam_10_cluster),width = 1,)+
   geom_boxplot(aes(fill = pam_10_cluster),width = 0.1,position = position_identity(),outlier.shape = NA)+
   scale_color_manual(values = pal)+
@@ -254,17 +251,16 @@ f1f<-
   geom_signif(comparisons = list(c("1", "NC"),c('2','NC'),c('3','NC'),c("4", "NC"),c('5','NC'),c('6','NC'),c("7", "NC"),c('8','NC'),c('9','NC'),c('10','NC')),map_signif_level=T,test = "wilcox.test")+ 
   labs(title="jsd distance to nc",size=11) + 
   theme_bw()
-f1f
 ```
 
 ##dominant bacterium shannon difference
 ```{r}
 sub.meta <- filter(metadata,d == 1 | d == 'healthy') %>% filter(severe_case == 'yes'|severe_case == 'no'|severe_case == 'healthy')
 sub.df <- df[,rownames(sub.meta)] %>% t() %>% as.data.frame()
-f2a_plot <- sub.meta
-f2a_plot$severe_case<-factor(f2a_plot$severe_case,levels = c('yes','no','healthy'))
-f2a<-
-  ggplot(f2a_plot,aes(x=severe_case,y=Shannon))+
+plot1 <- sub.meta
+plot1$severe_case<-factor(f2a_plot$severe_case,levels = c('yes','no','healthy'))
+
+  ggplot(plot1,aes(x=severe_case,y=Shannon))+
   geom_boxplot(aes(color = severe_case),alpha =0.2,weight = 3)+
   geom_point(aes(fill = severe_case,color = severe_case),position = position_jitterdodge(0.2),alpha = 0.5,shape = 20,size = 1.6)+
   scale_color_manual(values = c('#E69F00','124','forestgreen'))+
@@ -272,7 +268,7 @@ f2a<-
   geom_signif(comparisons = list(c("yes", "no"), c("no", "healthy"),c("yes", "healthy")),map_signif_level=T,test = "wilcox.test")+ 
   labs(title="dominant abundance difference",size=15) + 
   theme_bw()
-f2a 
+
 ```
 
 ##Cumulative frequency of dominant bacterium
@@ -295,17 +291,17 @@ dom_microbe<-left_join(dom_microbe,metainfo)
 rownames(dom_microbe)<-dom_microbe$raw_id
 dom_microbe$severe_case<-factor(dom_microbe$severe_case,levels = c('yes','no','healthy'))
 #write.csv(dom_microbe,'F:/ZLF/CAP/paper_structure/figure2/dominant_microbe0621.csv')
-f2b_plot <- dom_microbe
-f2b_plot$status = 1
-attach(f2b_plot)
+plot1 <- dom_microbe
+plot1$status = 1
+attach(plot1)
 #Surv(abundance,status)
-fit <- survfit(Surv(abundance,status) ~ severe_case, data = f2b_plot)
-ggsurvplot(fit,data = f2b_plot,
+fit <- survfit(Surv(abundance,status) ~ severe_case, data = plot1)
+ggsurvplot(fit,data = plot1,
            risk.table = TRUE,
            palette = c('#E69F00','124','forestgreen'))
 ##log rank test
-sn <- filter(f2b_plot,severe_case == 'yes'|severe_case == 'no')
-sh <- filter(f2b_plot,severe_case == 'yes'|severe_case == 'healthy')
+sn <- filter(plot1,severe_case == 'yes'|severe_case == 'no')
+sh <- filter(plot1,severe_case == 'yes'|severe_case == 'healthy')
 for (i in c('sn','sh')) {
   attach(get(i))
   b <- coxph(Surv(abundance,status) ~ severe_case,data = get(i))
@@ -317,14 +313,12 @@ for (i in c('sn','sh')) {
 
 ##dominant bacterium abundance difference
 ```{r}
-#f2c_plot <- Dominant microbe type proportion (0.5)
-#write.csv(plot_5,'F:/ZLF/CAP/paper_structure/figure2/f1c_0621.csv')
-f2c_plot <- read.csv('F:/ZLF/CAP/paper_structure/figure2/f1c_0727.csv',row.names = 1)
-f2c_plot$group <- factor(f2c_plot$group,levels = c("severe_l","non-severe_l","healthy_l","severe_m","non-severe_m","healthy_m" ))
-f2c_plot$type <- factor(f2c_plot$type,levels = rev(c('pathogen','core','others')))
+plot1 <- Dominant microbe type proportion (0.5)#in table
+plot1$group <- factor(plot1$group,levels = c("severe_l","non-severe_l","healthy_l","severe_m","non-severe_m","healthy_m" ))
+plot1$type <- factor(plot1$type,levels = rev(c('pathogen','core','others')))
 col <- brewer.pal(3,'Set1')
-f2c <-
-  ggplot(f2c_plot,mapping=aes(x=group,y=proportion*100,fill=type))+
+
+  ggplot(plot1,mapping=aes(x=group,y=proportion*100,fill=type))+
   geom_col(position = "stack",width = 0.6)+
   labs(x = 'severity', y = 'Dominant microbe proportion(%)',title = "Dominant microbes(<50%)") +
   
@@ -333,17 +327,17 @@ f2c <-
   theme_bw()+
   xlab(NULL)+
   scale_fill_manual(values =  rev(col))
-f2c
+
 ```
 
 ##distance to healthy(severity)
 ```{r}
 sub.meta <- metadata %>% filter(subject != 'nc' & subject != 'NCPCR') %>% filter(d == 1 | d == 'healthy')
 sub.df <- df[,rownames(sub.meta)] %>% t() %>% as.data.frame()
-plot_f2d <- disTance(sub.meta,sub.df,'jsd','severe_case','severe_case') %>% filter(severe_case.x == 'healthy') %>% filter(severe_case.y == 'yes' | severe_case.y == 'no')
-colnames(plot_f2d)[3]<-'distance_to_healthy'
-f2d <-
-  ggplot(plot_f2d,aes(x=severe_case.y,y=distance_to_healthy))+
+plot1 <- disTance(sub.meta,sub.df,'jsd','severe_case','severe_case') %>% filter(severe_case.x == 'healthy') %>% filter(severe_case.y == 'yes' | severe_case.y == 'no')
+colnames(plot1)[3]<-'distance_to_healthy'
+
+  ggplot(plot1,aes(x=severe_case.y,y=distance_to_healthy))+
   #geom_violin(aes(color = cluster,fill = cluster),alpha=0.7)+
   geom_boxplot(aes(fill = severe_case.y),width = 0.5,position = position_identity(),alpha=0.7)+
   scale_color_manual(values = c('#E69F00','124','forestgreen'))+
@@ -355,7 +349,7 @@ f2d <-
   theme_bw()
 #legend.position = 'NONE')
 #xlab(NULL)+ylab(NULL)
-f2d
+
 ```
 
 
@@ -368,23 +362,20 @@ OTU = phyloseq::otu_table(sub.df, taxa_are_rows = F)
 physeq = phyloseq(OTU)
 jsd=phyloseq::distance(physeq, method = "jsd")
 jsd.cord = cmdscale(jsd,k=2,eig = T)
-#制作绘图文件
+
 PC1 = jsd.cord$points[,1]
 PC2 = jsd.cord$points[,2]
 plotdata <- data.frame(rownames(jsd.cord$points),PC1,PC2,sub.meta[,val])
 colnames(plotdata) <-c("sample","PC1","PC2","group")
-#用于填充样本点的颜色
 cbbPalette <- c( "#56B4E9","#E69F00", "#009E73", "#F0E442","red","grey")
-#样本点的边框颜色
 Palette <- c("#000000", "#000000","#000000","#000000","#000000","#000000")
-#用于绘制横纵坐标label的文本，以显示解释比例
 eigen.vals.jsd = jsd.cord$eig
 last_one = sum(eigen.vals.jsd>0)
 pc1 <-floor(eigen.vals.jsd[1]*100/sum(eigen.vals.jsd[1:last_one])) 
 pc2 <-floor(eigen.vals.jsd[2]*100/sum(eigen.vals.jsd[1:last_one])) 
 pich=rep(c(21:24),3)
-f2e_plot <- merge(plotdata,aggregate(cbind(mean.x=PC1,mean.y=PC2)~group,plotdata,mean),by="group")
-f2e = ggplot(f2e_plot, aes(PC1, PC2,)) +
+plot1 <- merge(plotdata,aggregate(cbind(mean.x=PC1,mean.y=PC2)~group,plotdata,mean),by="group")
+ggplot(plot1, aes(PC1, PC2,)) +
   geom_point(aes(colour=group,shape=group,fill=group),size=4)+
   geom_segment(aes(x=mean.x,y=mean.y,xend=PC1, yend=PC2,color =  group),alpha=0.15)+
   scale_shape_manual(values=pich)+
@@ -416,66 +407,64 @@ f2e = ggplot(f2e_plot, aes(PC1, PC2,)) +
                             label=c(unique(f2e_plot $group)),
                             #fontface="bold",show.legend = F,box.padding = 0,size=1.5)
                             fontface="bold",show.legend = F,box.padding = 0,size=4)
-f2e
+
 ```
 
 ##maaslin2 severity
 ```{r}
-#f2g_plot <- Severity related microbes
-f2g_plot <- read.csv('F:/ZLF/CAP/paper_structure/figure2/f2g_0909.csv',row.names = 1)
-#write.csv(f2g_plot,'F:/ZLF/CAP/paper_structure/figure2/f2g_0621.csv')
-f2g<-ggplot(f2g_plot,aes(x=coef,y=feature))+
+plot1 <- Severity related microbes#in table
+ggplot(plot1,aes(x=coef,y=feature))+
   geom_bar(stat = "identity",fill = ifelse(f2g_plot$severity == 'yes',"#E69F00","#56B4E9"),alpha = 0.7)+
   theme_bw()
-f2g
+
 ```
 
 
 ##maaslin2 pathway
 
 ```{r}
-pathway_abundance <- read.csv("F:/ZLF/CAP/paper_structure/figure6/pathway/pathway_rel.csv",row.names = 1)
+pathway_abundance <- pathway_abundance#in tables
 sub.meta <- filter(metadata,d == 1) %>% filter(severe_case == 'yes' | severe_case == 'no')
 sub.df <- pathway_abundance[,rownames(sub.meta)] %>% t() %>% as.data.frame()
 sub.df$raw_id <- rownames(sub.df)
-f2h_plot <- left_join(select(sub.meta,raw_id, severe_case),sub.df) %>% 
+f2g_plot <- left_join(select(sub.meta,raw_id, severe_case),sub.df) %>% 
   gather(key="pathway",value="abundance",c('superpathway of menaquinol-9 biosynthesis','superpathway of menaquinol-10 biosynthesis','superpathway of menaquinol-6 biosynthesis I','superpathway of demethylmenaquinol-6 biosynthesis I','superpathway of demethylmenaquinol-9 biosynthesis')) %>% 
   dplyr::select(raw_id,pathway,abundance,everything()) 
-f2h<-ggplot(data = f2h_plot,aes(x = pathway, y = abundance))+
+ggplot(f2g_plot,aes(x = pathway, y = abundance))+
   geom_boxplot(aes(fill = severe_case),outlier.shape=7,outlier.size = 0.0001,alpha = 0.75)+
   scale_fill_manual(values = c('124','#E69F00'))+
   stat_compare_means(aes(group = severe_case), method = "wilcox.test",label = "p.signif",label.y = 0.0047)+
   coord_flip()+
   theme_bw()+
   ggtitle('Menaquinol/Demethylmenaquinol Biosynthesis')
-f2h
 
-pathway_abundance <- read.csv("F:/ZLF/CAP/paper_structure/figure6/pathway/pathway_rel.csv",row.names = 1)
+
+pathway_abundance <- pathway_abundance#in tables
 sub.meta <- filter(metadata,d == 1) %>% filter(severe_case == 'yes' | severe_case == 'no')
 sub.df <- pathway_abundance[,rownames(sub.meta)] %>% t() %>% as.data.frame()
 sub.df$raw_id <- rownames(sub.df)
-f2i_plot <- left_join(select(sub.meta,raw_id, severe_case),sub.df) %>% 
+plot1 <- left_join(select(sub.meta,raw_id, severe_case),sub.df) %>% 
   gather(key="pathway",value="abundance",c('acetyl-CoA fermentation to butanoate II','pyruvate fermentation to butanoate','succinate fermentation to butanoate','L-lysine fermentation to acetate and butanoate')) %>% 
   dplyr::select(raw_id,pathway,abundance,everything()) 
-f2i_plot$pathway <- factor(f2i_plot$pathway,levels = c('acetyl-CoA fermentation to butanoate II','pyruvate fermentation to butanoate','succinate fermentation to butanoate','L-lysine fermentation to acetate and butanoate'))
-f2i<-ggplot(data = f2i_plot,aes(x = pathway, y = abundance))+
+plot1$pathway <- factor(plot1$pathway,levels = c('acetyl-CoA fermentation to butanoate II','pyruvate fermentation to butanoate','succinate fermentation to butanoate','L-lysine fermentation to acetate and butanoate'))
+ggplot(data = plot1,aes(x = pathway, y = abundance))+
   geom_boxplot(aes(fill = severe_case),outlier.shape=7,outlier.size = 0.0001,alpha = 0.75)+
   scale_fill_manual(values = c('124','#E69F00'))+
   stat_compare_means(aes(group = severe_case), method = "wilcox.test",label = "p.signif",label.y = 0.0047)+
   coord_flip()+
   theme_bw()+
   ggtitle('Menaquinol/Demethylmenaquinol Biosynthesis')
-f2i
+
 ```
 
 ##shannon dynamic
 ```{r}
 sub.meta <- filter(metadata, severe_case == 'yes' | severe_case == 'no') %>% filter(d != 9)
-f3a_plot <- sub.meta
-f3a_plot$severe_case <- factor(f3a_plot$severe_case,levels = c('no','yes'))
-f3a_plot$severe_case <- factor(f3a_plot$severe_case,levels = c('yes','no'))
-f3a<-
-  ggplot(f3a_plot,aes(x=d,y=Shannon))+
+plot1 <- sub.meta
+plot1$severe_case <- factor(plot1$severe_case,levels = c('no','yes'))
+plot1$severe_case <- factor(plot1$severe_case,levels = c('yes','no'))
+
+  ggplot(plot1,aes(x=d,y=Shannon))+
   geom_boxplot(aes(color = severe_case),alpha =0.2,weight = 3)+
   geom_point(aes(fill = severe_case,color = severe_case),position = position_jitterdodge(0.2),alpha = 0.5,shape = 20,size = 1.6)+
   scale_color_manual(values = c('#E69F00','124'))+  scale_fill_manual(values = c('#E69F00','124'))+
@@ -484,31 +473,31 @@ f3a<-
   geom_signif(annotations = c('**','****'), y_position = c(4.3,4.5),xmin = c(1.2,1.2),xmax = c(2.2,3.2))+
   labs(title="Shannon difference",size=15) + 
   theme_bw()
-f3a  
+
 ```
 
 ##distance of two continuous samples
 ```{r}
-f3b_plot <- read.csv('F:/ZLF/CAP/paper_structure/figure3/jsd_220618.csv',row.names = 1)
-f3b_plot$severe_case <- factor(f3b_plot$severe_case,levels = c('yes','no'))
-f3b <-
-  ggplot(f3b_plot,aes(x = severe_case,y = distance))+
+plot1 <- JSD distance between 2 consecutive days#in table
+plot1$severe_case <- factor(plot1$severe_case,levels = c('yes','no'))
+
+  ggplot(plot1,aes(x = severe_case,y = distance))+
   geom_boxplot(aes(fill = severe_case),width = 0.5,position = position_identity(),alpha=0.7,outlier.size = 0.001)+
   scale_color_manual(values = c('#E69F00','124','forestgreen'))+
   scale_fill_manual(values = c('#E69F00','124','forestgreen'))+
   geom_signif(comparisons = list(c("yes", "no")),map_signif_level=T,test = "wilcox.test")+ 
   labs(title="distance of two continuous samples",size=11) + 
   theme_bw()
-f3b
+
 ```
 
 ##distance to day1
 ```{r}
-f3c_plot<-read.csv('F:/ZLF/CAP/paper_structure/figure3/f3c0621.csv',row.names = 1)
-#f3c_plot<-JSD distance to day1
-colnames(f3c_plot)[3:4] <- c('day','distance')
-f3c<-
-  ggplot(f3c_plot,aes(x=day,y=distance))+
+
+plot_data<-JSD distance to day1#in table
+colnames(plot_data)[3:4] <- c('day','distance')
+
+  ggplot(plot1,aes(x=day,y=distance))+
   geom_boxplot(aes(color = severe_case),alpha =0.2,weight = 3)+
   geom_point(aes(fill = severe_case,color = severe_case),position = position_jitterdodge(0.2),alpha = 0.5,shape = 20,size = 1.6)+
   
@@ -521,7 +510,7 @@ f3c<-
   ylab("jsd distance to day1")+
   xlab("day after admission")+
   theme_bw()
-f3c
+
 ```
 
 ##mechanical ventilation CS5 in day5 change
@@ -568,7 +557,7 @@ subject<-str_split(taxonomy_table1$variable,'d')%>%as.data.frame()%>%t()%>%as.da
 subject<-c(subject$V1)
 taxonomy_table1$subject<-subject
 taxonomy_table1$variable<-str_sub(taxonomy_table1$variable,8,9)
-f3e<-ggplot(taxonomy_table1,mapping=aes(x=variable,y=value*100,fill=taxonomy))+
+ggplot(taxonomy_table1,mapping=aes(x=variable,y=value*100,fill=taxonomy))+
   geom_col(position = "stack",width = 0.8)+
   #  labs(x = '', y = 'Relative Abundance(%)',title = "genus abundance") +
   labs(x = '', y = '',title = "") +
@@ -583,7 +572,7 @@ f3e<-ggplot(taxonomy_table1,mapping=aes(x=variable,y=value*100,fill=taxonomy))+
                                 "g__Enterococcus"='#1f77b4', "g__Corynebacterium" = '#aec7e8',         
                                 "f__Carnobacteriaceae" = '#98df8a', "g__Granulicatella" = "#F0E442",       
                                 "c__Gammaproteobacteria" = '#c5b0d5',"Others"="#339966"))
-f3e
+
 ```
 
 
@@ -620,15 +609,15 @@ rownames(meta_pathogen_hea) <- meta_pathogen_hea$raw_id
 
 ##counts of infectious pathogens
 ```{r}
-f4a_plot <- read.csv("F:/ZLF/CAP/downstream/relative_analysis/FTD_counts0621.csv")
-f4a_plot <- f4a_plot[order(f4a_plot[,'counts']),]
-f4a_plot$pathogen<-factor(f4a_plot$pathogen,levels = f4a_plot$pathogen)
-f4a<-ggplot(data=f4a_plot,aes(x=counts,y=pathogen))+
+plot1 <- read.csv("F:/ZLF/CAP/downstream/relative_analysis/FTD_counts0621.csv")
+plot1 <- plot1[order(plot1[,'counts']),]
+plot1$pathogen<-factor(plot1$pathogen,levels = plot1$pathogen)
+ggplot(plot1,aes(x=counts,y=pathogen))+
   geom_bar(stat = "identity")+
   ggtitle("Counts of  of pathogen infections")+
   xlim(0,16)+
   theme_bw()
-f4a
+
 ```
 
 ##distance to heathy BVM
@@ -661,21 +650,21 @@ hbvm$pathogen_type<-factor(hbvm$pathogen_type,levels = c('virus','bacteria','mix
 severe_rate <- data.frame(pathogen_type = c('bacteria','virus','mix'),severe_rate = c(0.067,0.05,0.25))
 hbvm1<-left_join(hbvm,severe_rate)
 hbvm1$pathogen_type<-factor(hbvm1$pathogen_type,levels = c('virus','bacteria','mix'))
-f4c_plot <- hbvm1
+plot1 <- hbvm1
 compaired = combn(c('virus','bacteria','mix'),2) %>% t() 
 comp = c()
 for (i in c(1:3)) {
   mid = list(compaired[i,])
   comp = c(comp,mid)
 }
-f4c<-
-  ggplot(f4c_plot,aes(x=pathogen_type,y=distance_to_healthy))+
+
+  ggplot(plot1,aes(x=pathogen_type,y=distance_to_healthy))+
   geom_boxplot(aes(alpha = severe_rate),fill = 'darkred',width = 0.5,position = position_identity(),outlier.size = 0.5)+
   scale_alpha_continuous(limits = c(0,0.4))+
   geom_signif(comparisons = comp,map_signif_level=T,test = "wilcox.test")+
   theme_bw()+
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
-f4c
+
 ```
 
 ##distance to healthy MKI 
@@ -709,15 +698,14 @@ hmki$pathogen_type<-factor(hmki$pathogen_type,levels = c("Mycoplasma.pneumoniae"
 severe_rate1 <- data.frame(pathogen_type = pathogens,severe_rate = c(0,0.3077,0))
 hmki1 <- left_join(hmki,severe_rate1)
 hmki1$pathogen_type<-factor(hmki1$pathogen_type,levels = c("Mycoplasma.pneumoniae","Influenza.A", "Klebsiella.pneumoniae"))
-f4e_plot <- hmki1
+plot1 <- hmki1
 compaired = combn(c("Mycoplasma.pneumoniae", "Klebsiella.pneumoniae", "Influenza.A"),2) %>% t() 
 comp = c()
 for (i in c(1:3)) {
   mid = list(compaired[i,])
   comp = c(comp,mid)
-}
-f4e<-
-  ggplot(f4e_plot,aes(x=pathogen_type,y=distance_to_healthy))+
+
+  ggplot(plot1,aes(x=pathogen_type,y=distance_to_healthy))+
   #geom_violin(aes(color = cluster,fill = cluster),alpha=0.7)+
   #geom_boxplot(aes(fill = pathogen_type),width = 0.5,position = position_identity(),alpha=0.7)+
   geom_boxplot(aes(alpha = severe_rate),fill = 'darkred',width = 0.5,position = position_identity(),outlier.size = 0.5)+
@@ -725,16 +713,15 @@ f4e<-
   geom_signif(comparisons = comp,map_signif_level=T,test = "wilcox.test")+
   theme_bw()+
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
-f4e
+
 ```
 
 ##lefse MKIH
 ```{r}
 library(pheatmap)
-kmi_lefse <- read.csv('F:/ZLF/CAP/paper_structure/ftd/kmi_lefse_0618.csv',row.names = 1)
-f4f_plot <- kmi_lefse
+plot1 <- kmi_lefse#in table
 bk = c(seq(-4.8,4.6,by=0.094))
-f4f<-pheatmap(f4f_plot ,
+pheatmap(plot1,
             cluster_row = FALSE,
             cluster_cols = FALSE,
             #display_numbers = TRUE,
@@ -743,8 +730,7 @@ f4f<-pheatmap(f4f_plot ,
             color = c(colorRampPalette(colors = c( "steelblue4","white"))(floor(length(bk)*(4.8/9.4))),colorRampPalette(colors = c( "white","darkred"))(ceiling(length(bk)*(4.6/9.4)))),
             
             #color = colorRampPalette(c("steelblue4",'white',"darkred"))(100)
-            #file="F:/ZLF/CAP/paper_structure/figure1/csjsddistance4.pdf",
 )
-f4f
+
 ```
 
