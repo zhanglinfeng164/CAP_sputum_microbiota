@@ -31,8 +31,8 @@ library(ggpubr)
 
 ###univariate PERMANOVA
 ```{r}
-metadata = read.csv('F:/ZLF/CAP/data/relative_data/metadata-all-220825.csv',row.names = 1)
-df = read.csv("F:/ZLF/CAP/data/relative_data/dfall-220617.csv",row.names=1)
+metadata #in tables
+df#in tables
 vals = c('onsetdays_new','sex','age','BMI', 'city',
          'smoke','basic_LRT_disease','pre_biotic','pre_immunosuppressive',
          'respiratory.support.invasive','death_case1','severe_case') 
@@ -67,8 +67,8 @@ single_res
 
 ### multivariate PERMANOVA
 ```{r}
-metadata = read.csv('F:/ZLF/CAP/data/relative_data/metadata-all-220825.csv',row.names = 1)
-df = read.csv("F:/ZLF/CAP/data/relative_data/dfall-220617.csv",row.names=1)
+metadata #in tables
+df#in tables
 vals = c('age', 'city','respiratory.support.invasive','death_case1','severe_case') 
 vals1 = c('onsetdays_new','sex','age','BMI', 'city',
          'smoke','basic_LRT_disease','pre_biotic','pre_immunosuppressive',
